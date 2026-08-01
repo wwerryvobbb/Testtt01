@@ -49,6 +49,9 @@ LOCATIONS_RAW = os.getenv("CRUNCHYROLL_LOCATIONS", "Jammu")
 MODE = os.getenv("CRUNCHYROLL_MODE", "2")  # 1=Normal, 2=Extreme
 PREFERRED_PROFILE = int(os.getenv("CRUNCHYROLL_PREFERRED_PROFILE", "0"))
 
+# Always headless in CI
+HEADLESS = True
+
 # Parse locations
 allowed_locations = [loc.strip().lower() for loc in LOCATIONS_RAW.split(",") if loc.strip()]
 if not allowed_locations:
