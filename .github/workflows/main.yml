@@ -6,6 +6,11 @@ on:
     - cron: '0 * * * *'
   workflow_dispatch:  # allows manual trigger
 
+permissions:
+  contents: read
+  pull-requests: write
+  workflow: write   # ⬅️ Needed for gh workflow run
+
 jobs:
   keep-devices:
     runs-on: ubuntu-latest
@@ -30,7 +35,7 @@ jobs:
           pip install undetected-chromedriver setuptools
 
       - name: Run Crunchyroll Device Keeper
-        continue-on-error: true  # allows the restart step to run even if the script fails
+        continue-on-error: true
         env:
           CRUNCHYROLL_EMAIL: ${{ secrets.CRUNCHYROLL_EMAIL }}
           CRUNCHYROLL_PASSWORD: ${{ secrets.CRUNCHYROLL_PASSWORD }}
@@ -38,11 +43,11 @@ jobs:
           CRUNCHYROLL_LOCATIONS: ${{ secrets.CRUNCHYROLL_LOCATIONS }}
           CRUNCHYROLL_MODE: ${{ secrets.CRUNCHYROLL_MODE }}
           CRUNCHYROLL_PREFERRED_PROFILE: ${{ secrets.CRUNCHYROLL_PREFERRED_PROFILE }}
-          CRUNCHYROLL_HEADLESS: "true"
+          # Headless is hardcoded in the script
         run: python crunchyroll_keeper_ci.py
 
       - name: 🔄 Auto-Restart Workflow
-        if: always()  # runs regardless of success/failure
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
