@@ -4,7 +4,8 @@ Crunchyroll Device Keeper - CI-Ready (GitHub Actions)
 - Reads all settings from environment variables
 - No interactive prompts
 - Runs continuously until all unwanted devices are deactivated
-- Full device location logging (no censoring)
+- Shows full location for devices being deactivated
+- Shows summary counts for kept/current devices
 """
 
 import subprocess
@@ -464,14 +465,16 @@ def run_normal_mode(driver, allowed_locations, headless=False):
             time.sleep(delay_no_devices)
             continue
 
-        print(f"\n🔄 Found {len(devices)} device(s).")
+        total = len(devices)
+        kept = 0
+        skipped = 0
+        current = 0
         deactivated_any = False
+
         for btn, card, location in devices:
             is_current = "Current Device" in card.text
-            print(f"\n📱 Device: {location}" + (" (Current Device)" if is_current else ""))
-
             if is_current:
-                print("   ℹ️  SKIPPING – current device")
+                current += 1
                 continue
 
             keep = False
@@ -480,9 +483,11 @@ def run_normal_mode(driver, allowed_locations, headless=False):
                     keep = True
                     break
             if keep:
-                print(f"   ✅ KEEPING (matches allowed location)")
+                kept += 1
                 continue
 
+            # Unwanted device – deactivate (show location)
+            print(f"\n📱 Device: {location}")
             print("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=False)
             if success:
@@ -491,9 +496,10 @@ def run_normal_mode(driver, allowed_locations, headless=False):
                 break
             else:
                 print("   ❌ Deactivation failed – moving to next device.")
-                continue
+                skipped += 1
 
         if not deactivated_any:
+            print(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
             print(f"⏳ No devices to deactivate. Waiting {delay_no_change:.1f} seconds...")
             time.sleep(delay_no_change)
         else:
@@ -524,14 +530,16 @@ def run_extreme_mode(driver, allowed_locations, headless=False):
             time.sleep(2)
             continue
 
-        print(f"\n🔄 Found {len(devices)} device(s).")
+        total = len(devices)
+        kept = 0
+        skipped = 0
+        current = 0
         deactivated_any = False
+
         for btn, card, location in devices:
             is_current = "Current Device" in card.text
-            print(f"\n📱 Device: {location}" + (" (Current Device)" if is_current else ""))
-
             if is_current:
-                print("   ℹ️  SKIPPING – current device")
+                current += 1
                 continue
 
             keep = False
@@ -540,22 +548,27 @@ def run_extreme_mode(driver, allowed_locations, headless=False):
                     keep = True
                     break
             if keep:
-                print(f"   ✅ KEEPING (matches allowed location)")
+                kept += 1
                 continue
 
+            # Unwanted device – deactivate (show location)
+            print(f"\n📱 Device: {location}")
             print("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=True)
             if success:
                 print("   ✅ Deactivation completed.")
                 deactivated_any = True
-                time.sleep(0.5)
                 break
             else:
-                print("   ❌ Deactivation failed – moving to next.")
-                continue
+                print("   ❌ Deactivation failed – moving to next device.")
+                skipped += 1
 
         if not deactivated_any:
+            print(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
             time.sleep(1)
+        else:
+            print("⏳ Device deactivated. Quick pause before re-checking...")
+            time.sleep(0.5)
 
 # ===========================
 # MAIN
@@ -590,7 +603,7 @@ if __name__ == "__main__":
     options.add_argument("--disable-web-security")
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-    # Removed problematic options: excludeSwitches and useAutomationExtension
+    # Removed problematic options
     driver = uc.Chrome(options=options, headless=True)
 
     # Login
