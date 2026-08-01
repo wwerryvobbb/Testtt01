@@ -1,0 +1,51 @@
+name: Crunchyroll Device Keeper
+
+on:
+  schedule:
+    # Run every hour (adjust as needed)
+    - cron: '0 * * * *'
+  workflow_dispatch:  # allows manual trigger
+
+jobs:
+  keep-devices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340  # 5 hours 40 minutes
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install dependencies
+        run: |
+          pip install undetected-chromedriver setuptools
+
+      - name: Run Crunchyroll Device Keeper
+        continue-on-error: true  # allows the restart step to run even if the script fails
+        env:
+          CRUNCHYROLL_EMAIL: ${{ secrets.CRUNCHYROLL_EMAIL }}
+          CRUNCHYROLL_PASSWORD: ${{ secrets.CRUNCHYROLL_PASSWORD }}
+          CRUNCHYROLL_PIN: ${{ secrets.CRUNCHYROLL_PIN }}
+          CRUNCHYROLL_LOCATIONS: ${{ secrets.CRUNCHYROLL_LOCATIONS }}
+          CRUNCHYROLL_MODE: ${{ secrets.CRUNCHYROLL_MODE }}
+          CRUNCHYROLL_PREFERRED_PROFILE: ${{ secrets.CRUNCHYROLL_PREFERRED_PROFILE }}
+          CRUNCHYROLL_HEADLESS: "true"
+        run: python crunchyroll_keeper_ci.py
+
+      - name: 🔄 Auto-Restart Workflow
+        if: always()  # runs regardless of success/failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔁 Triggering next workflow run to restart the script..."
+          gh workflow run "${{ github.workflow }}" --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"
+          echo "✅ Restart triggered successfully!"
