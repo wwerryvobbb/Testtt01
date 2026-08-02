@@ -1,4 +1,4 @@
-name: Crunchyroll Device Keeper
+name: SuperCR Device Keeper
 
 on:
   schedule:
@@ -37,7 +37,7 @@ jobs:
         run: |
           pip install --upgrade undetected-chromedriver setuptools
 
-      - name: Run Crunchyroll Device Keeper
+      - name: Run SuperCR Device Keeper
         continue-on-error: true
         env:
           EMAIL: ${{ secrets.EMAIL }}
@@ -49,7 +49,7 @@ jobs:
           MODE: ${{ secrets.MODE }}
           PREFERRED_PROFILE: ${{ secrets.PREFERRED_PROFILE }}
           TZ: Asia/Kolkata
-        run: python supercyheadless.py   # <-- File name changed here
+        run: python supercrheadless.py
 
       - name: 🔄 Auto-Restart Workflow
         if: always()
