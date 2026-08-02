@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  actions: write   # required to trigger a new workflow run
+  actions: write
 
 jobs:
   keep-devices:
@@ -39,6 +39,7 @@ jobs:
           CRUNCHYROLL_PASSWORD: ${{ secrets.CRUNCHYROLL_PASSWORD }}
           CRUNCHYROLL_PIN: ${{ secrets.CRUNCHYROLL_PIN }}
           CRUNCHYROLL_LOCATIONS: ${{ secrets.CRUNCHYROLL_LOCATIONS }}
+          CRUNCHYROLL_KEEP_DEVICE_NAMES: ${{ secrets.CRUNCHYROLL_KEEP_DEVICE_NAMES }}
           CRUNCHYROLL_MODE: ${{ secrets.CRUNCHYROLL_MODE }}
           CRUNCHYROLL_PREFERRED_PROFILE: ${{ secrets.CRUNCHYROLL_PREFERRED_PROFILE }}
         run: python crunchyroll_keeper_ci.py
