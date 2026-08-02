@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install undetected-chromedriver setuptools
+          pip install --upgrade undetected-chromedriver setuptools
 
       - name: Run Crunchyroll Device Keeper
         continue-on-error: true
