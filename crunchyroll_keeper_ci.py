@@ -40,11 +40,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
 # ===========================
-# TIMESTAMP HELPER
+# TIMESTAMP HELPER - FIXED (no deprecation warning)
 # ===========================
 def timestamp():
     """Return current time in IST (HH:MM:SS IST)."""
-    now = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    # Use datetime.UTC (Python 3.11+) - no deprecation warning
+    now = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=5, minutes=30)
     return now.strftime("%H:%M:%S IST")
 
 def log(message):
