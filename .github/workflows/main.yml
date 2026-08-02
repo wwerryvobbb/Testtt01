@@ -15,6 +15,11 @@ jobs:
     timeout-minutes: 340
 
     steps:
+      - name: Set timezone to IST
+        run: |
+          sudo timedatectl set-timezone Asia/Kolkata
+          date
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -42,6 +47,7 @@ jobs:
           CRUNCHYROLL_KEEP_DEVICE_NAMES: ${{ secrets.CRUNCHYROLL_KEEP_DEVICE_NAMES }}
           CRUNCHYROLL_MODE: ${{ secrets.CRUNCHYROLL_MODE }}
           CRUNCHYROLL_PREFERRED_PROFILE: ${{ secrets.CRUNCHYROLL_PREFERRED_PROFILE }}
+          TZ: Asia/Kolkata
         run: python crunchyroll_keeper_ci.py
 
       - name: 🔄 Auto-Restart Workflow
