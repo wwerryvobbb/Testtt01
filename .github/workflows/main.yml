@@ -35,7 +35,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade undetected-chromedriver setuptools
+          pip install --upgrade --no-cache-dir undetected-chromedriver setuptools
 
       - name: Run SuperCR Device Keeper
         continue-on-error: true
