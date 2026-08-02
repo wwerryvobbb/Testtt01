@@ -1,118 +1,58 @@
 # 🔐 Secrets Setup – SuperCR Device Keeper
 
-Below are all the **secrets** you need to add to your GitHub repository for the SuperCR Device Keeper workflow.  
-To copy a secret name, simply select and copy the text from the code blocks.
+This repository contains a GitHub Actions workflow (`.github/workflows/supercr.yml`) that runs `supercrheadless.py` to automatically manage device sessions for the SuperCR streaming service. 
+
+To allow the automated script to log in and evaluate device sessions securely, you must configure GitHub Repository Secrets.
 
 ---
 
-## 🔒 Required Secrets
+## 📌 Required Credentials
 
-| Secret Name | Description | Required? |
-|-------------|-------------|-----------|
-| `EMAIL` | Your account email address (used to log in). | ✅ **Yes** |
-| `PASSWORD` | Your account password (used to log in). | ✅ **Yes** |
+These credentials are required for the workflow to authenticate with your account.
 
-### Copy names:
+| Secret Name | Required | Description |
+| :--- | :---: | :--- |
+| ```EMAIL``` | **Yes** | The email address associated with your SuperCR account. |
+| ```PASSWORD``` | **Yes** | The password associated with your SuperCR account. |
+
+---
+
+## 🎯 Device Selection Criteria (At Least One Required)
+
+To prevent the script from revoking sessions on devices you actively use, you must specify at least one retention criterion.
+
+| Secret Name | Required | Description |
+| :--- | :---: | :--- |
+| ```LOCATIONS``` | *Conditional* | Comma-separated list of location substrings to keep (e.g., `New York, Chrome`). |
+| ```KEEP_DEVICE_NAMES``` | *Conditional* | Comma-separated list of specific device names or models to keep (e.g., `Living Room TV, iPhone 15`). |
+
+> **Note:** At least **one** of ```LOCATIONS``` or ```KEEP_DEVICE_NAMES``` must be provided for the script to safely identify which device sessions to retain.
+
+---
+
+## ⚙️ Optional Configuration Secrets
+
+Custom settings to fine-tune workflow behavior and session management.
+
+| Secret Name | Default | Options / Description |
+| :--- | :---: | :--- |
+| ```PIN``` | *None* | Profile PIN code (if your account profile is PIN-protected). |
+| ```KEEP_MODE``` | `OR` | `OR` / `AND` — Determines logic when both `LOCATIONS` and `KEEP_DEVICE_NAMES` are set. |
+| ```MODE``` | `2` | `1` (Normal) or `2` (Extreme) cleaning strategy. |
+| ```PREFERRED_PROFILE``` | `0` | Profile index to use: `1`–`10` for a specific profile, or `0` to cycle. |
+
+---
+
+## 📋 Quick Copy Secret Names
+
+Copy these exact keys when setting up your repository secrets:
 
 ```text
 EMAIL
 PASSWORD
-```
-
----
-
-## ⚠️ At Least One of These is Required
-
-| Secret Name | Description | Required? |
-|-------------|-------------|-----------|
-| `LOCATIONS` | Comma‑separated location substrings to keep (e.g., `Jammu, Himachal`). | ⚠️ Required unless `KEEP_DEVICE_NAMES` is set. |
-| `KEEP_DEVICE_NAMES` | Comma‑separated device names/models to keep (e.g., `POCO F5, Chrome on Windows`). | ⚠️ Required unless `LOCATIONS` is set. |
-
-> **Note:** You must provide **at least one** of `LOCATIONS` or `KEEP_DEVICE_NAMES` – otherwise the script will exit with an error.
-
-### Copy names:
-
-```text
 LOCATIONS
 KEEP_DEVICE_NAMES
-```
-
----
-
-## 🔘 Optional Secrets
-
-| Secret Name | Description | Default / Allowed Values |
-|-------------|-------------|---------------------------|
-| `PIN` | Your profile PIN (if your account uses one). | (empty) |
-| `KEEP_MODE` | Keep logic: `OR` (keep if either location or device name matches) or `AND` (keep if both match). | `OR` (if not set) |
-| `MODE` | Run mode: `1` (Normal – slower, configurable delays) or `2` (Extreme – faster). | `2` (if not set) |
-| `PREFERRED_PROFILE` | Profile number to use (1‑10) – the script will only try that profile. Set to `0` to cycle through all profiles. | `0` (if not set) |
-
-### Copy names:
-
-```text
 PIN
 KEEP_MODE
 MODE
 PREFERRED_PROFILE
-```
-
----
-
-## 📋 All Secret Names – Quick Copy
-
-```text
-EMAIL
-PASSWORD
-PIN
-LOCATIONS
-KEEP_DEVICE_NAMES
-KEEP_MODE
-MODE
-PREFERRED_PROFILE
-```
-
----
-
-## 🧪 Example Values
-
-| Secret | Example Value |
-|--------|---------------|
-| `EMAIL` | `youremail@example.com` |
-| `PASSWORD` | `your-strong-password` |
-| `PIN` | `1234` |
-| `LOCATIONS` | `Jammu, Himachal` |
-| `KEEP_DEVICE_NAMES` | `POCO F5, Chrome on Windows` |
-| `KEEP_MODE` | `OR` |
-| `MODE` | `2` |
-| `PREFERRED_PROFILE` | `0` |
-
----
-
-## 📌 How to Add Secrets
-
-1. Go to your GitHub repository.
-2. Click **Settings** → **Secrets and variables** → **Actions**.
-3. Click **New repository secret**.
-4. Enter the secret name (e.g., `EMAIL`) and its value.
-5. Click **Add secret**.
-
-Repeat for each secret you need to add.
-
----
-
-## ✅ Minimum Setup
-
-For the workflow to run successfully, you only need:
-
-```
-EMAIL
-PASSWORD
-LOCATIONS
-```
-
-(Or replace `LOCATIONS` with `KEEP_DEVICE_NAMES` if you prefer to keep devices by name.)
-
----
-
-That’s it – you’re ready to go! 🚀
