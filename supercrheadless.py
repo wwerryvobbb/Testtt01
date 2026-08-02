@@ -4,6 +4,7 @@ SuperCR Device Keeper - CI-Ready (GitHub Actions)
 - Reads all settings from environment variables (renamed for brevity)
 - No interactive prompts
 - Auto-re-login if session expires
+- Auto-handle profile overlay if it appears unexpectedly
 - Keeps devices by location OR device name/model (both optional, but at least one required)
 - Supports OR/AND keep mode via KEEP_MODE (default: OR)
 - Shows model, device name, and location for deactivated devices
@@ -53,7 +54,7 @@ def log(message):
     print(f"[{timestamp()}] {message}")
 
 # ===========================
-# CONFIGURATION - READ FROM ENV (renamed, no CRUNCHYROLL_ prefix)
+# CONFIGURATION - READ FROM ENV
 # ===========================
 DEVICE_URL = "https://www.crunchyroll.com/account/devices"
 LOGIN_URL = "https://sso.crunchyroll.com/login"
@@ -107,6 +108,14 @@ def accept_cookies_if_present(driver):
     except:
         pass
     return False
+
+# ===========================
+# PROFILE OVERLAY DETECTION
+# ===========================
+def is_profile_overlay_present(driver):
+    """Return True if the profile selection overlay is visible."""
+    overlay, _ = get_profile_overlay_and_cards(driver)
+    return overlay is not None
 
 # ===========================
 # LOGIN + PROFILE SELECTION (WITH CYCLING & WORKING PIN)
@@ -505,6 +514,15 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, keep_mode, hea
             driver.get(DEVICE_URL)
             time.sleep(load_wait)
 
+        # Check if profile overlay is present (e.g., after unexpected logout or page reload)
+        if is_profile_overlay_present(driver):
+            log("👤 Profile overlay detected. Re-selecting profile...")
+            if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
+                log("❌ Profile selection failed. Exiting.")
+                break
+            driver.get(DEVICE_URL)
+            time.sleep(load_wait)
+
         driver.get(DEVICE_URL)
         time.sleep(load_wait)
         if wait_for_cloudflare(driver):
@@ -593,6 +611,15 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, keep_mode, he
             log("🔄 Session expired. Re-logging in...")
             if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
                 log("❌ Re-login failed. Exiting.")
+                break
+            driver.get(DEVICE_URL)
+            time.sleep(load_wait)
+
+        # Check if profile overlay is present
+        if is_profile_overlay_present(driver):
+            log("👤 Profile overlay detected. Re-selecting profile...")
+            if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
+                log("❌ Profile selection failed. Exiting.")
                 break
             driver.get(DEVICE_URL)
             time.sleep(load_wait)
