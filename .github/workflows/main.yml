@@ -40,15 +40,16 @@ jobs:
       - name: Run Crunchyroll Device Keeper
         continue-on-error: true
         env:
-          CRUNCHYROLL_EMAIL: ${{ secrets.CRUNCHYROLL_EMAIL }}
-          CRUNCHYROLL_PASSWORD: ${{ secrets.CRUNCHYROLL_PASSWORD }}
-          CRUNCHYROLL_PIN: ${{ secrets.CRUNCHYROLL_PIN }}
-          CRUNCHYROLL_LOCATIONS: ${{ secrets.CRUNCHYROLL_LOCATIONS }}
-          CRUNCHYROLL_KEEP_DEVICE_NAMES: ${{ secrets.CRUNCHYROLL_KEEP_DEVICE_NAMES }}
-          CRUNCHYROLL_MODE: ${{ secrets.CRUNCHYROLL_MODE }}
-          CRUNCHYROLL_PREFERRED_PROFILE: ${{ secrets.CRUNCHYROLL_PREFERRED_PROFILE }}
+          EMAIL: ${{ secrets.EMAIL }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          PIN: ${{ secrets.PIN }}
+          LOCATIONS: ${{ secrets.LOCATIONS }}
+          KEEP_DEVICE_NAMES: ${{ secrets.KEEP_DEVICE_NAMES }}
+          KEEP_MODE: ${{ secrets.KEEP_MODE }}
+          MODE: ${{ secrets.MODE }}
+          PREFERRED_PROFILE: ${{ secrets.PREFERRED_PROFILE }}
           TZ: Asia/Kolkata
-        run: python crunchyroll_keeper_ci.py
+        run: python supercyheadless.py   # <-- File name changed here
 
       - name: 🔄 Auto-Restart Workflow
         if: always()
