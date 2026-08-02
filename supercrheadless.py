@@ -9,7 +9,7 @@ SuperCR Device Keeper - CI-Ready (GitHub Actions)
 - Supports OR/AND keep mode via KEEP_MODE (default: OR)
 - Shows model, device name, and location for deactivated devices
 - Summary counts for kept/current/skipped devices
-- All logs with IST timestamps (TIME: DD-MMM-YYYY HH:MM:SS AM/PM IST)
+- All logs with IST timestamps
 """
 
 import subprocess
@@ -42,12 +42,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
 # ===========================
-# TIMESTAMP HELPER (NEW FORMAT)
+# TIMESTAMP HELPER
 # ===========================
 def timestamp():
-    """Return current time in IST (TIME: DD-MMM-YYYY HH:MM:SS AM/PM IST)."""
+    """Return current time in IST (HH:MM:SS IST)."""
     now = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=5, minutes=30)
-    return now.strftime("TIME: %d-%b-%Y %I:%M:%S %p IST")
+    return now.strftime("%H:%M:%S IST")
 
 def log(message):
     """Print message with IST timestamp."""
