@@ -16,6 +16,7 @@ import time
 import random
 import os
 import shutil
+import re
 from pathlib import Path
 
 # ---- Auto-install dependencies ----
@@ -636,6 +637,21 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, headless=Fals
             time.sleep(0.5)
 
 # ===========================
+# GET CHROME VERSION
+# ===========================
+def get_chrome_version():
+    """Get the installed Chrome version."""
+    try:
+        result = subprocess.run(["google-chrome", "--version"], capture_output=True, text=True)
+        version = result.stdout.strip()
+        match = re.search(r"(\d+)\.\d+\.\d+\.\d+", version)
+        if match:
+            return int(match.group(1))
+    except:
+        pass
+    return None
+
+# ===========================
 # MAIN
 # ===========================
 if __name__ == "__main__":
@@ -674,7 +690,17 @@ if __name__ == "__main__":
     options.add_argument("--disable-web-security")
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-    driver = uc.Chrome(options=options, headless=True)
+
+    # Get Chrome version and pass it to undetected-chromedriver
+    chrome_version = get_chrome_version()
+    if chrome_version:
+        print(f"   Detected Chrome version: {chrome_version}")
+        try:
+            driver = uc.Chrome(options=options, headless=True, version_main=chrome_version)
+        except:
+            driver = uc.Chrome(options=options, headless=True)
+    else:
+        driver = uc.Chrome(options=options, headless=True)
 
     # Login
     login_success = login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE)
