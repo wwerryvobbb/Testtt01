@@ -3,9 +3,10 @@ r"""
 Crunchyroll Device Keeper - CI-Ready (GitHub Actions)
 - Reads all settings from environment variables
 - No interactive prompts
-- Runs continuously until all unwanted devices are deactivated
-- Shows full location for devices being deactivated
-- Shows summary counts for kept/current devices
+- Auto-re-login if session expires
+- Keeps devices by location OR device name/model (both optional, but at least one required)
+- Shows model, device name, and location for deactivated devices
+- Summary counts for kept/current/skipped devices
 """
 
 import subprocess
@@ -46,17 +47,22 @@ PROFILE_BASE_DIR = "/tmp/chrome_profile"  # ephemeral for CI
 EMAIL = os.getenv("CRUNCHYROLL_EMAIL")
 PASSWORD = os.getenv("CRUNCHYROLL_PASSWORD")
 PIN = os.getenv("CRUNCHYROLL_PIN", "")  # optional
-LOCATIONS_RAW = os.getenv("CRUNCHYROLL_LOCATIONS", "Jammu")
+LOCATIONS_RAW = os.getenv("CRUNCHYROLL_LOCATIONS", "")
+DEVICE_NAMES_RAW = os.getenv("CRUNCHYROLL_KEEP_DEVICE_NAMES", "")
 MODE = os.getenv("CRUNCHYROLL_MODE", "2")  # 1=Normal, 2=Extreme
 PREFERRED_PROFILE = int(os.getenv("CRUNCHYROLL_PREFERRED_PROFILE", "0"))
 
 # Always headless in CI
 HEADLESS = True
 
-# Parse locations
+# Parse locations and device names
 allowed_locations = [loc.strip().lower() for loc in LOCATIONS_RAW.split(",") if loc.strip()]
-if not allowed_locations:
-    allowed_locations = ["jammu"]
+keep_device_names = [name.strip().lower() for name in DEVICE_NAMES_RAW.split(",") if name.strip()]
+
+# Validate that at least one keep condition is provided
+if not allowed_locations and not keep_device_names:
+    print("❌ At least one of CRUNCHYROLL_LOCATIONS or CRUNCHYROLL_KEEP_DEVICE_NAMES must be set")
+    sys.exit(1)
 
 # Validate required vars
 if not EMAIL or not PASSWORD:
@@ -190,7 +196,6 @@ def login_and_select_profile(driver, email, password, pin, preferred_profile=0):
 
     # Determine which profiles to try
     if preferred_profile > 0:
-        # Shift numbering: user's 1 -> index 1, user's 2 -> index 2, etc.
         if len(cards) == 1:
             profile_indices = [0]
             print(f"   🎯 Only one profile available, using it.")
@@ -358,6 +363,7 @@ def find_device_card(button):
     return None
 
 def get_device_buttons(driver, retries=2, headless=False):
+    """Return list of (button, card, location, model, device_name) for non-ALL devices."""
     for attempt in range(retries):
         try:
             WebDriverWait(driver, 8).until(
@@ -378,12 +384,28 @@ def get_device_buttons(driver, retries=2, headless=False):
                 card = find_device_card(btn)
                 if card is None:
                     continue
-                location = "Unknown Location"
-                for line in card.text.split('\n'):
+                lines = card.text.split('\n')
+                # Extract location
+                location = None
+                for line in lines:
                     if "Location:" in line:
                         location = line.replace("Location:", "").strip()
                         break
-                result.append((btn, card, location))
+                # Extract non-label lines (exclude "DEACTIVATE" and labels)
+                name_lines = []
+                for line in lines:
+                    clean = line.strip()
+                    if (clean and 
+                        "Location:" not in clean and 
+                        "Activation Date:" not in clean and 
+                        "Last Used:" not in clean and
+                        "Current Device" not in clean and
+                        clean != "DEACTIVATE"):
+                        name_lines.append(clean)
+                # Assign model and device name
+                model = name_lines[0] if len(name_lines) > 0 else "Unavailable"
+                device_name = name_lines[1] if len(name_lines) > 1 else "Unavailable"
+                result.append((btn, card, location or "Unknown Location", model, device_name))
             if result:
                 return result
         if attempt < retries - 1:
@@ -437,9 +459,16 @@ def deactivate_device(driver, button, fast=False):
     return True
 
 # ===========================
+# CHECK IF LOGGED OUT
+# ===========================
+def is_logged_out(driver):
+    current_url = driver.current_url
+    return current_url.startswith("https://sso.crunchyroll.com/login")
+
+# ===========================
 # NORMAL MODE (CI: no interactive prompts)
 # ===========================
-def run_normal_mode(driver, allowed_locations, headless=False):
+def run_normal_mode(driver, allowed_locations, keep_device_names, headless=False):
     print("\n--- Normal Mode (CI) – using default delays ---\n")
     delay_no_change = 3
     delay_after_deactivation = 3
@@ -450,6 +479,15 @@ def run_normal_mode(driver, allowed_locations, headless=False):
     load_wait = 2
 
     while True:
+        # Check if logged out
+        if is_logged_out(driver):
+            print("🔄 Session expired. Re-logging in...")
+            if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
+                print("❌ Re-login failed. Exiting.")
+                break
+            driver.get(DEVICE_URL)
+            time.sleep(load_wait)
+
         driver.get(DEVICE_URL)
         time.sleep(load_wait)
         if wait_for_cloudflare(driver):
@@ -471,23 +509,32 @@ def run_normal_mode(driver, allowed_locations, headless=False):
         current = 0
         deactivated_any = False
 
-        for btn, card, location in devices:
+        for btn, card, location, model, device_name in devices:
             is_current = "Current Device" in card.text
             if is_current:
                 current += 1
                 continue
 
             keep = False
-            for loc in allowed_locations:
-                if loc.lower() in location.lower():
-                    keep = True
-                    break
+            if allowed_locations:
+                for loc in allowed_locations:
+                    if loc.lower() in location.lower():
+                        keep = True
+                        break
+            if not keep and keep_device_names:
+                for name in keep_device_names:
+                    if name.lower() in model.lower() or name.lower() in device_name.lower():
+                        keep = True
+                        break
+
             if keep:
                 kept += 1
                 continue
 
-            # Unwanted device – deactivate (show location)
-            print(f"\n📱 Device: {location}")
+            # Unwanted device – deactivate
+            print(f"\n📱 Model: {model}")
+            print(f"   📱 Device name: {device_name}")
+            print(f"   📍 Location: {location}")
             print("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=False)
             if success:
@@ -509,13 +556,22 @@ def run_normal_mode(driver, allowed_locations, headless=False):
 # ===========================
 # EXTREME MODE (CI)
 # ===========================
-def run_extreme_mode(driver, allowed_locations, headless=False):
+def run_extreme_mode(driver, allowed_locations, keep_device_names, headless=False):
     print("\n⚡ EXTREME MODE ENABLED – Very fast, may trigger rate limits!")
     print("   Press Ctrl+C to stop.\n")
 
     load_wait = 1
 
     while True:
+        # Check if logged out
+        if is_logged_out(driver):
+            print("🔄 Session expired. Re-logging in...")
+            if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
+                print("❌ Re-login failed. Exiting.")
+                break
+            driver.get(DEVICE_URL)
+            time.sleep(load_wait)
+
         driver.get(DEVICE_URL)
         time.sleep(load_wait)
         if wait_for_cloudflare(driver):
@@ -536,23 +592,32 @@ def run_extreme_mode(driver, allowed_locations, headless=False):
         current = 0
         deactivated_any = False
 
-        for btn, card, location in devices:
+        for btn, card, location, model, device_name in devices:
             is_current = "Current Device" in card.text
             if is_current:
                 current += 1
                 continue
 
             keep = False
-            for loc in allowed_locations:
-                if loc.lower() in location.lower():
-                    keep = True
-                    break
+            if allowed_locations:
+                for loc in allowed_locations:
+                    if loc.lower() in location.lower():
+                        keep = True
+                        break
+            if not keep and keep_device_names:
+                for name in keep_device_names:
+                    if name.lower() in model.lower() or name.lower() in device_name.lower():
+                        keep = True
+                        break
+
             if keep:
                 kept += 1
                 continue
 
-            # Unwanted device – deactivate (show location)
-            print(f"\n📱 Device: {location}")
+            # Unwanted device – deactivate
+            print(f"\n📱 Model: {model}")
+            print(f"   📱 Device name: {device_name}")
+            print(f"   📍 Location: {location}")
             print("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=True)
             if success:
@@ -574,9 +639,15 @@ def run_extreme_mode(driver, allowed_locations, headless=False):
 # MAIN
 # ===========================
 if __name__ == "__main__":
-    print("\n⚡ Crunchyroll Device Keeper – CI Mode")
+    print("\n⚡ Crunchyroll Device Keeper – CI Mode (with Device Name & Auto-Re-Login)")
     print("   (Auto‑installs dependencies if missing)\n")
-    print(f"   Keeping devices containing: {', '.join(allowed_locations)}")
+
+    keep_conditions = []
+    if allowed_locations:
+        keep_conditions.append(f"Location: {', '.join(allowed_locations)}")
+    if keep_device_names:
+        keep_conditions.append(f"Device Name/Model: {', '.join(keep_device_names)}")
+    print(f"   Keeping devices matching: {' OR '.join(keep_conditions)}")
     print(f"   Mode: {'Extreme' if MODE == '2' else 'Normal'}")
     print(f"   Headless: {HEADLESS}\n")
 
@@ -603,7 +674,6 @@ if __name__ == "__main__":
     options.add_argument("--disable-web-security")
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-    # Removed problematic options
     driver = uc.Chrome(options=options, headless=True)
 
     # Login
@@ -620,14 +690,13 @@ if __name__ == "__main__":
         driver.get(DEVICE_URL)
         time.sleep(2)
 
-    print(f"\n🔍 Keeping devices containing: {', '.join(allowed_locations)}")
-    print("   Running continuously until all unwanted devices are deactivated.\n")
+    print("\n🔍 Running continuously until all unwanted devices are deactivated.\n")
 
     try:
         if MODE == "2":
-            run_extreme_mode(driver, allowed_locations, headless=HEADLESS)
+            run_extreme_mode(driver, allowed_locations, keep_device_names, headless=HEADLESS)
         else:
-            run_normal_mode(driver, allowed_locations, headless=HEADLESS)
+            run_normal_mode(driver, allowed_locations, keep_device_names, headless=HEADLESS)
     except KeyboardInterrupt:
         print("\n🛑 Stopped by user.")
     except Exception as e:
