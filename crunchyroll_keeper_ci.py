@@ -7,6 +7,7 @@ Crunchyroll Device Keeper - CI-Ready (GitHub Actions)
 - Keeps devices by location OR device name/model (both optional, but at least one required)
 - Shows model, device name, and location for deactivated devices
 - Summary counts for kept/current/skipped devices
+- All logs with IST timestamps
 """
 
 import subprocess
@@ -17,6 +18,7 @@ import random
 import os
 import shutil
 import re
+import datetime
 from pathlib import Path
 
 # ---- Auto-install dependencies ----
@@ -36,6 +38,18 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
+
+# ===========================
+# TIMESTAMP HELPER
+# ===========================
+def timestamp():
+    """Return current time in IST (HH:MM:SS IST)."""
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    return now.strftime("%H:%M:%S IST")
+
+def log(message):
+    """Print message with IST timestamp."""
+    print(f"[{timestamp()}] {message}")
 
 # ===========================
 # CONFIGURATION - READ FROM ENV
@@ -62,12 +76,12 @@ keep_device_names = [name.strip().lower() for name in DEVICE_NAMES_RAW.split(","
 
 # Validate that at least one keep condition is provided
 if not allowed_locations and not keep_device_names:
-    print("❌ At least one of CRUNCHYROLL_LOCATIONS or CRUNCHYROLL_KEEP_DEVICE_NAMES must be set")
+    log("❌ At least one of CRUNCHYROLL_LOCATIONS or CRUNCHYROLL_KEEP_DEVICE_NAMES must be set")
     sys.exit(1)
 
 # Validate required vars
 if not EMAIL or not PASSWORD:
-    print("❌ CRUNCHYROLL_EMAIL and CRUNCHYROLL_PASSWORD must be set")
+    log("❌ CRUNCHYROLL_EMAIL and CRUNCHYROLL_PASSWORD must be set")
     sys.exit(1)
 
 # ===========================
@@ -85,7 +99,7 @@ def accept_cookies_if_present(driver):
         accept_btn = driver.find_element(By.XPATH, "//button[contains(text(),'Accept All')] | //button[contains(text(),'Accept')] | //button[@id='onetrust-accept-btn-handler']")
         if accept_btn.is_displayed() and accept_btn.is_enabled():
             accept_btn.click()
-            print("   🍪 Accepted cookies")
+            log("🍪 Accepted cookies")
             time.sleep(0.5)
             return True
     except:
@@ -116,7 +130,7 @@ def is_pin_error_present(driver):
 def go_back_to_profile_selection(driver):
     """Navigate directly to the discover page to reset the state."""
     driver.get("https://www.crunchyroll.com/discover")
-    print("   🔄 Navigated to discover page")
+    log("🔄 Navigated to discover page")
     time.sleep(2)
     for _ in range(8):
         try:
@@ -153,15 +167,15 @@ def get_profile_overlay_and_cards(driver):
     return overlay, cards
 
 def login_and_select_profile(driver, email, password, pin, preferred_profile=0):
-    print("🔐 Logging in...")
+    log("🔐 Logging in...")
     driver.get(LOGIN_URL)
     time.sleep(3)
 
     # Check for Cloudflare
     try:
         if "Verifying you are human" in driver.page_source:
-            print("\n⚠️  Cloudflare challenge detected!")
-            print("   Please solve the CAPTCHA manually in the browser window.")
+            log("⚠️ Cloudflare challenge detected!")
+            log("   Please solve the CAPTCHA manually in the browser window.")
             input("👉 Press ENTER once you have completed the verification...")
             time.sleep(2)
     except:
@@ -177,72 +191,72 @@ def login_and_select_profile(driver, email, password, pin, preferred_profile=0):
         password_input.send_keys(password)
         submit = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
         submit.click()
-        print("   ✅ Login form submitted")
+        log("✅ Login form submitted")
     except Exception as e:
-        print(f"   ❌ Login form error: {e}")
+        log(f"❌ Login form error: {e}")
         return False
 
     time.sleep(5)
 
     overlay, cards = get_profile_overlay_and_cards(driver)
     if not overlay:
-        print("   ℹ️  No profile selection overlay detected – assuming single profile.")
+        log("ℹ️ No profile selection overlay detected – assuming single profile.")
         return True
 
     if not cards:
-        print("   ⚠️  No profile cards found – assuming single profile.")
+        log("⚠️ No profile cards found – assuming single profile.")
         return True
 
-    print(f"   👤 Found {len(cards)} profile(s).")
+    log(f"👤 Found {len(cards)} profile(s).")
 
     # Determine which profiles to try
     if preferred_profile > 0:
         if len(cards) == 1:
             profile_indices = [0]
-            print(f"   🎯 Only one profile available, using it.")
+            log(f"🎯 Only one profile available, using it.")
         else:
             if preferred_profile <= len(cards) - 1:
                 idx = preferred_profile
             else:
                 idx = len(cards) - 1
             profile_indices = [idx]
-            print(f"   🎯 Using preferred profile {preferred_profile} (card index {idx})")
+            log(f"🎯 Using preferred profile {preferred_profile} (card index {idx})")
     else:
         profile_indices = list(range(len(cards)))
-        print("   🔄 Will cycle through all profiles.")
+        log("🔄 Will cycle through all profiles.")
 
     for idx in profile_indices:
-        print(f"\n   🔄 Trying Profile {idx + 1}...")
+        log(f"\n🔄 Trying Profile {idx + 1}...")
 
         overlay, cards = get_profile_overlay_and_cards(driver)
         if not overlay:
-            print("   ⚠️  Overlay disappeared. Reloading...")
+            log("⚠️ Overlay disappeared. Reloading...")
             driver.refresh()
             time.sleep(4)
             overlay, cards = get_profile_overlay_and_cards(driver)
             if not overlay:
-                print("   ❌ Could not recover overlay. Exiting.")
+                log("❌ Could not recover overlay. Exiting.")
                 return False
         if idx >= len(cards):
-            print("   ❌ Profile index out of range.")
+            log("❌ Profile index out of range.")
             break
 
         card = cards[idx]
         try:
             card.click()
-            print(f"   👤 Selected Profile {idx + 1}")
+            log(f"👤 Selected Profile {idx + 1}")
             time.sleep(0.3)
         except Exception as e:
-            print(f"   ❌ Could not click profile {idx + 1}: {e}")
+            log(f"❌ Could not click profile {idx + 1}: {e}")
             time.sleep(1)
             overlay, cards = get_profile_overlay_and_cards(driver)
             if not overlay:
-                print("   ⚠️  Overlay lost, reloading...")
+                log("⚠️ Overlay lost, reloading...")
                 driver.refresh()
                 time.sleep(4)
                 overlay, cards = get_profile_overlay_and_cards(driver)
                 if not overlay:
-                    print("   ❌ Could not recover. Exiting.")
+                    log("❌ Could not recover. Exiting.")
                     return False
             continue
 
@@ -269,68 +283,68 @@ def login_and_select_profile(driver, email, password, pin, preferred_profile=0):
                 if pin_input:
                     pin_input.clear()
                     pin_input.send_keys(pin)
-                    print(f"   ✅ PIN entered for Profile {idx + 1}.")
+                    log(f"✅ PIN entered for Profile {idx + 1}.")
                     time.sleep(0.1)
 
                     confirm_btns = driver.find_elements(By.XPATH, "//button[contains(text(),'Continue') or contains(text(),'Submit') or contains(text(),'Confirm') or contains(text(),'Unlock')]")
                     if confirm_btns:
                         confirm_btns[0].click()
-                        print(f"   ✅ PIN confirmed for Profile {idx + 1}.")
+                        log(f"✅ PIN confirmed for Profile {idx + 1}.")
                         time.sleep(0.3)
                     else:
                         pin_input.send_keys(Keys.RETURN)
-                        print(f"   ✅ PIN submitted (Enter key) for Profile {idx + 1}.")
+                        log(f"✅ PIN submitted (Enter key) for Profile {idx + 1}.")
                         time.sleep(0.3)
                 else:
-                    print(f"   ⚠️  PIN input not found for Profile {idx + 1} – skipping.")
+                    log(f"⚠️ PIN input not found for Profile {idx + 1} – skipping.")
             except Exception as e:
-                print(f"   ⚠️  PIN entry error for Profile {idx + 1}: {e}")
+                log(f"⚠️ PIN entry error for Profile {idx + 1}: {e}")
         else:
-            print("   ℹ️  No PIN provided – skipping PIN entry.")
+            log("ℹ️ No PIN provided – skipping PIN entry.")
 
         time.sleep(1.0)
         overlay_still_visible = driver.find_elements(By.CSS_SELECTOR, "div.erc-multiple-profiles-layout, div[data-t='profile-selector']")
         if not overlay_still_visible or not overlay_still_visible[0].is_displayed():
-            print(f"   ✅ Profile {idx + 1} unlocked successfully!")
+            log(f"✅ Profile {idx + 1} unlocked successfully!")
             return True
 
         if is_pin_error_present(driver):
-            print(f"   ❌ Incorrect PIN for Profile {idx + 1}.")
+            log(f"❌ Incorrect PIN for Profile {idx + 1}.")
             if preferred_profile > 0:
-                print(f"   ❌ Preferred profile {preferred_profile} failed. Exiting.")
+                log(f"❌ Preferred profile {preferred_profile} failed. Exiting.")
                 return False
             if idx < len(cards) - 1:
-                print(f"   🔄 Going back to select next profile...")
+                log(f"🔄 Going back to select next profile...")
                 if not go_back_to_profile_selection(driver):
-                    print("   ⚠️  Could not go back. Trying to navigate directly to device page.")
+                    log("⚠️ Could not go back. Trying to navigate directly to device page.")
                     driver.get(DEVICE_URL)
                     time.sleep(5)
                     if "device" in driver.current_url:
-                        print("   ✅ Skipped profile selection (already in device page).")
+                        log("✅ Skipped profile selection (already in device page).")
                         return True
                     else:
-                        print("   ❌ Failed to recover. Exiting.")
+                        log("❌ Failed to recover. Exiting.")
                         return False
                 time.sleep(2)
                 continue
             else:
-                print(f"   ❌ All profiles failed. Exiting.")
+                log(f"❌ All profiles failed. Exiting.")
                 return False
         else:
             time.sleep(1.5)
             overlay_still_visible = driver.find_elements(By.CSS_SELECTOR, "div.erc-multiple-profiles-layout, div[data-t='profile-selector']")
             if not overlay_still_visible or not overlay_still_visible[0].is_displayed():
-                print(f"   ✅ Profile {idx + 1} unlocked successfully!")
+                log(f"✅ Profile {idx + 1} unlocked successfully!")
                 return True
             else:
-                print(f"   ⚠️  Unknown state for Profile {idx + 1}. Trying next.")
+                log(f"⚠️ Unknown state for Profile {idx + 1}. Trying next.")
                 if preferred_profile > 0:
-                    print(f"   ❌ Preferred profile {preferred_profile} failed. Exiting.")
+                    log(f"❌ Preferred profile {preferred_profile} failed. Exiting.")
                     return False
                 go_back_to_profile_selection(driver)
                 continue
 
-    print("   ❌ All profiles failed with the given PIN.")
+    log("❌ All profiles failed with the given PIN.")
     return False
 
 # ===========================
@@ -346,8 +360,8 @@ def human_move_mouse(driver, element, fast=False):
 def wait_for_cloudflare(driver):
     try:
         if "Verifying you are human" in driver.page_source:
-            print("\n⚠️  Cloudflare challenge detected!")
-            print("   Please solve the CAPTCHA manually in the browser window.")
+            log("⚠️ Cloudflare challenge detected!")
+            log("   Please solve the CAPTCHA manually in the browser window.")
             input("👉 Press ENTER once you have completed the verification...")
             time.sleep(2)
             return True
@@ -372,7 +386,7 @@ def get_device_buttons(driver, retries=2, headless=False):
             )
         except:
             if headless and attempt == 0:
-                print("   ⏳ Waiting for device page to load...")
+                log("⏳ Waiting for device page to load...")
             time.sleep(1)
             continue
 
@@ -420,17 +434,17 @@ def deactivate_device(driver, button, fast=False):
         human_move_mouse(driver, button, fast)
         time.sleep(0.1 if fast else random.uniform(0.2, 0.4))
         button.click()
-        print("   🔄 Deactivate clicked")
+        log("🔄 Deactivate clicked")
     except Exception as e:
-        print(f"   ❌ Could not click device button: {e}")
+        log(f"❌ Could not click device button: {e}")
         return False
 
     try:
         wait = WebDriverWait(driver, 5 if fast else 8)
         modal = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "dialog[data-t='deactivate-selected-modal']")))
-        print("   ✅ Modal appeared")
+        log("✅ Modal appeared")
     except:
-        print("   ⚠️  Modal did not appear – assuming success")
+        log("⚠️ Modal did not appear – assuming success")
         return True
 
     try:
@@ -438,7 +452,7 @@ def deactivate_device(driver, button, fast=False):
         human_move_mouse(driver, modal_btn, fast)
         time.sleep(0.1 if fast else random.uniform(0.2, 0.4))
         modal_btn.click()
-        print("   ✅ Confirmed deactivation in modal")
+        log("✅ Confirmed deactivation in modal")
     except:
         try:
             modal_btns = modal.find_elements(By.XPATH, ".//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'deactivate')]")
@@ -446,14 +460,14 @@ def deactivate_device(driver, button, fast=False):
                 human_move_mouse(driver, modal_btns[0], fast)
                 time.sleep(0.1 if fast else random.uniform(0.2, 0.4))
                 modal_btns[0].click()
-                print("   ✅ Confirmed (fallback)")
+                log("✅ Confirmed (fallback)")
         except Exception as e2:
-            print(f"   ❌ Modal confirm error: {e2}")
+            log(f"❌ Modal confirm error: {e2}")
             return False
 
     try:
         WebDriverWait(driver, 5 if fast else 8).until(EC.invisibility_of_element_located((By.CSS_SELECTOR, "dialog[data-t='deactivate-selected-modal']")))
-        print("   ✅ Modal closed")
+        log("✅ Modal closed")
     except:
         pass
     time.sleep(0.2 if fast else random.uniform(0.3, 0.7))
@@ -470,21 +484,21 @@ def is_logged_out(driver):
 # NORMAL MODE (CI: no interactive prompts)
 # ===========================
 def run_normal_mode(driver, allowed_locations, keep_device_names, headless=False):
-    print("\n--- Normal Mode (CI) – using default delays ---\n")
+    log("\n--- Normal Mode (CI) – using default delays ---\n")
     delay_no_change = 3
     delay_after_deactivation = 3
     delay_no_devices = 5
 
-    print(f"✅ Delays set: no-change={delay_no_change}s, after-deact={delay_after_deactivation}s, no-devices={delay_no_devices}s\n")
+    log(f"✅ Delays set: no-change={delay_no_change}s, after-deact={delay_after_deactivation}s, no-devices={delay_no_devices}s\n")
 
     load_wait = 2
 
     while True:
         # Check if logged out
         if is_logged_out(driver):
-            print("🔄 Session expired. Re-logging in...")
+            log("🔄 Session expired. Re-logging in...")
             if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
-                print("❌ Re-login failed. Exiting.")
+                log("❌ Re-login failed. Exiting.")
                 break
             driver.get(DEVICE_URL)
             time.sleep(load_wait)
@@ -499,8 +513,8 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, headless=False
 
         devices = get_device_buttons(driver, retries=2, headless=headless)
         if not devices:
-            print("⚠️ No individual device buttons found.")
-            print(f"⏳ Waiting {delay_no_devices:.1f} seconds...")
+            log("⚠️ No individual device buttons found.")
+            log(f"⏳ Waiting {delay_no_devices:.1f} seconds...")
             time.sleep(delay_no_devices)
             continue
 
@@ -533,42 +547,42 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, headless=False
                 continue
 
             # Unwanted device – deactivate
-            print(f"\n📱 Model: {model}")
-            print(f"   📱 Device name: {device_name}")
-            print(f"   📍 Location: {location}")
-            print("   ❌ Deactivating...")
+            log(f"\n📱 Model: {model}")
+            log(f"   📱 Device name: {device_name}")
+            log(f"   📍 Location: {location}")
+            log("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=False)
             if success:
-                print("   ✅ Deactivation completed.")
+                log("   ✅ Deactivation completed.")
                 deactivated_any = True
                 break
             else:
-                print("   ❌ Deactivation failed – moving to next device.")
+                log("   ❌ Deactivation failed – moving to next device.")
                 skipped += 1
 
         if not deactivated_any:
-            print(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
-            print(f"⏳ No devices to deactivate. Waiting {delay_no_change:.1f} seconds...")
+            log(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
+            log(f"⏳ No devices to deactivate. Waiting {delay_no_change:.1f} seconds...")
             time.sleep(delay_no_change)
         else:
-            print(f"⏳ Device deactivated. Waiting {delay_after_deactivation:.1f} seconds before re-checking...")
+            log(f"⏳ Device deactivated. Waiting {delay_after_deactivation:.1f} seconds before re-checking...")
             time.sleep(delay_after_deactivation)
 
 # ===========================
 # EXTREME MODE (CI)
 # ===========================
 def run_extreme_mode(driver, allowed_locations, keep_device_names, headless=False):
-    print("\n⚡ EXTREME MODE ENABLED – Very fast, may trigger rate limits!")
-    print("   Press Ctrl+C to stop.\n")
+    log("\n⚡ EXTREME MODE ENABLED – Very fast, may trigger rate limits!")
+    log("   Press Ctrl+C to stop.\n")
 
     load_wait = 1
 
     while True:
         # Check if logged out
         if is_logged_out(driver):
-            print("🔄 Session expired. Re-logging in...")
+            log("🔄 Session expired. Re-logging in...")
             if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
-                print("❌ Re-login failed. Exiting.")
+                log("❌ Re-login failed. Exiting.")
                 break
             driver.get(DEVICE_URL)
             time.sleep(load_wait)
@@ -583,7 +597,7 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, headless=Fals
 
         devices = get_device_buttons(driver, retries=2, headless=headless)
         if not devices:
-            print("⚠️ No devices found.")
+            log("⚠️ No devices found.")
             time.sleep(2)
             continue
 
@@ -616,24 +630,24 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, headless=Fals
                 continue
 
             # Unwanted device – deactivate
-            print(f"\n📱 Model: {model}")
-            print(f"   📱 Device name: {device_name}")
-            print(f"   📍 Location: {location}")
-            print("   ❌ Deactivating...")
+            log(f"\n📱 Model: {model}")
+            log(f"   📱 Device name: {device_name}")
+            log(f"   📍 Location: {location}")
+            log("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=True)
             if success:
-                print("   ✅ Deactivation completed.")
+                log("   ✅ Deactivation completed.")
                 deactivated_any = True
                 break
             else:
-                print("   ❌ Deactivation failed – moving to next device.")
+                log("   ❌ Deactivation failed – moving to next device.")
                 skipped += 1
 
         if not deactivated_any:
-            print(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
+            log(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
             time.sleep(1)
         else:
-            print("⏳ Device deactivated. Quick pause before re-checking...")
+            log("⏳ Device deactivated. Quick pause before re-checking...")
             time.sleep(0.5)
 
 # ===========================
@@ -655,26 +669,26 @@ def get_chrome_version():
 # MAIN
 # ===========================
 if __name__ == "__main__":
-    print("\n⚡ Crunchyroll Device Keeper – CI Mode (with Device Name & Auto-Re-Login)")
-    print("   (Auto‑installs dependencies if missing)\n")
+    log("\n⚡ Crunchyroll Device Keeper – CI Mode (with Device Name & Auto-Re-Login)")
+    log("   (Auto‑installs dependencies if missing)\n")
 
     keep_conditions = []
     if allowed_locations:
         keep_conditions.append(f"Location: {', '.join(allowed_locations)}")
     if keep_device_names:
         keep_conditions.append(f"Device Name/Model: {', '.join(keep_device_names)}")
-    print(f"   Keeping devices matching: {' OR '.join(keep_conditions)}")
-    print(f"   Mode: {'Extreme' if MODE == '2' else 'Normal'}")
-    print(f"   Headless: {HEADLESS}\n")
+    log(f"   Keeping devices matching: {' OR '.join(keep_conditions)}")
+    log(f"   Mode: {'Extreme' if MODE == '2' else 'Normal'}")
+    log(f"   Headless: {HEADLESS}\n")
 
     # Clear previous session (fresh profile)
     if os.path.exists(PROFILE_BASE_DIR):
         shutil.rmtree(PROFILE_BASE_DIR)
-        print("🧹 Cleared previous session cache.")
+        log("🧹 Cleared previous session cache.")
     os.makedirs(PROFILE_BASE_DIR, exist_ok=True)
 
     # Launch browser
-    print("🚀 Opening Chrome (headless)...")
+    log("🚀 Opening Chrome (headless)...")
     options = uc.ChromeOptions()
     options.add_argument(f"--user-data-dir={PROFILE_BASE_DIR}")
     options.add_argument("--headless=new")
@@ -694,7 +708,7 @@ if __name__ == "__main__":
     # Get Chrome version and pass it to undetected-chromedriver
     chrome_version = get_chrome_version()
     if chrome_version:
-        print(f"   Detected Chrome version: {chrome_version}")
+        log(f"   Detected Chrome version: {chrome_version}")
         try:
             driver = uc.Chrome(options=options, headless=True, version_main=chrome_version)
         except:
@@ -705,18 +719,18 @@ if __name__ == "__main__":
     # Login
     login_success = login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE)
     if not login_success:
-        print("❌ Login or profile selection failed. Exiting.")
+        log("❌ Login or profile selection failed. Exiting.")
         driver.quit()
         sys.exit(1)
 
     # Navigate to device page
     driver.get(DEVICE_URL)
-    print("\n🔗 Device page opened.")
+    log("\n🔗 Device page opened.")
     if wait_for_cloudflare(driver):
         driver.get(DEVICE_URL)
         time.sleep(2)
 
-    print("\n🔍 Running continuously until all unwanted devices are deactivated.\n")
+    log("\n🔍 Running continuously until all unwanted devices are deactivated.\n")
 
     try:
         if MODE == "2":
@@ -724,11 +738,11 @@ if __name__ == "__main__":
         else:
             run_normal_mode(driver, allowed_locations, keep_device_names, headless=HEADLESS)
     except KeyboardInterrupt:
-        print("\n🛑 Stopped by user.")
+        log("\n🛑 Stopped by user.")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        log(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
     finally:
         driver.quit()
-        print("Browser closed.")
+        log("Browser closed.")
