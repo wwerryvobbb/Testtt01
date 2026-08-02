@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-Crunchyroll Device Keeper - CI-Ready (GitHub Actions)
+SuperCR Device Keeper - CI-Ready (GitHub Actions)
 - Reads all settings from environment variables (renamed for brevity)
 - No interactive prompts
 - Auto-re-login if session expires
@@ -668,25 +668,10 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, keep_mode, he
             time.sleep(0.5)
 
 # ===========================
-# GET CHROME VERSION
-# ===========================
-def get_chrome_version():
-    """Get the installed Chrome version."""
-    try:
-        result = subprocess.run(["google-chrome", "--version"], capture_output=True, text=True)
-        version = result.stdout.strip()
-        match = re.search(r"(\d+)\.\d+\.\d+\.\d+", version)
-        if match:
-            return int(match.group(1))
-    except:
-        pass
-    return None
-
-# ===========================
 # MAIN
 # ===========================
 if __name__ == "__main__":
-    log("\n⚡ Crunchyroll Device Keeper – CI Mode (with Device Name & Auto-Re-Login)")
+    log("\n⚡ SuperCR Device Keeper – CI Mode (with Device Name & Auto-Re-Login)")
     log("   (Auto‑installs dependencies if missing)\n")
 
     keep_conditions = []
@@ -723,16 +708,33 @@ if __name__ == "__main__":
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
 
-    # Get Chrome version and pass it to undetected-chromedriver
-    chrome_version = get_chrome_version()
-    if chrome_version:
-        log(f"   Detected Chrome version: {chrome_version}")
-        try:
-            driver = uc.Chrome(options=options, headless=True, version_main=chrome_version)
-        except:
-            driver = uc.Chrome(options=options, headless=True)
-    else:
+    # Let undetected-chromedriver auto-detect the correct driver version
+    try:
         driver = uc.Chrome(options=options, headless=True)
+    except Exception as e:
+        log(f"⚠️ First driver attempt failed: {e}")
+        log("   Retrying with fresh options...")
+        # Create fresh options for fallback
+        new_options = uc.ChromeOptions()
+        new_options.add_argument(f"--user-data-dir={PROFILE_BASE_DIR}")
+        new_options.add_argument("--headless=new")
+        new_options.add_argument("--no-sandbox")
+        new_options.add_argument("--disable-dev-shm-usage")
+        new_options.add_argument("--window-size=1920,1080")
+        new_options.add_argument("--disable-blink-features=AutomationControlled")
+        new_options.add_argument("--disable-infobars")
+        new_options.add_argument("--disable-popup-blocking")
+        new_options.add_argument("--disable-notifications")
+        new_options.add_argument("--disable-extensions")
+        new_options.add_argument("--disable-setuid-sandbox")
+        new_options.add_argument("--disable-web-security")
+        new_options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+        new_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+        try:
+            driver = uc.Chrome(options=new_options, headless=True)
+        except Exception as e2:
+            log(f"❌ Fallback also failed: {e2}")
+            sys.exit(1)
 
     # Login
     login_success = login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE)
