@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 r"""
 Crunchyroll Device Keeper - CI-Ready (GitHub Actions)
-- Reads all settings from environment variables
+- Reads all settings from environment variables (renamed for brevity)
 - No interactive prompts
 - Auto-re-login if session expires
 - Keeps devices by location OR device name/model (both optional, but at least one required)
+- Supports OR/AND keep mode via KEEP_MODE (default: OR)
 - Shows model, device name, and location for deactivated devices
 - Summary counts for kept/current/skipped devices
 - All logs with IST timestamps
@@ -40,11 +41,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
 # ===========================
-# TIMESTAMP HELPER - FIXED (no deprecation warning)
+# TIMESTAMP HELPER
 # ===========================
 def timestamp():
     """Return current time in IST (HH:MM:SS IST)."""
-    # Use datetime.UTC (Python 3.11+) - no deprecation warning
     now = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=5, minutes=30)
     return now.strftime("%H:%M:%S IST")
 
@@ -53,20 +53,21 @@ def log(message):
     print(f"[{timestamp()}] {message}")
 
 # ===========================
-# CONFIGURATION - READ FROM ENV
+# CONFIGURATION - READ FROM ENV (renamed, no CRUNCHYROLL_ prefix)
 # ===========================
 DEVICE_URL = "https://www.crunchyroll.com/account/devices"
 LOGIN_URL = "https://sso.crunchyroll.com/login"
-PROFILE_BASE_DIR = "/tmp/chrome_profile"  # ephemeral for CI
+PROFILE_BASE_DIR = "/tmp/chrome_profile"
 
 # ---- Environment variables ----
-EMAIL = os.getenv("CRUNCHYROLL_EMAIL")
-PASSWORD = os.getenv("CRUNCHYROLL_PASSWORD")
-PIN = os.getenv("CRUNCHYROLL_PIN", "")  # optional
-LOCATIONS_RAW = os.getenv("CRUNCHYROLL_LOCATIONS", "")
-DEVICE_NAMES_RAW = os.getenv("CRUNCHYROLL_KEEP_DEVICE_NAMES", "")
-MODE = os.getenv("CRUNCHYROLL_MODE", "2")  # 1=Normal, 2=Extreme
-PREFERRED_PROFILE = int(os.getenv("CRUNCHYROLL_PREFERRED_PROFILE", "0"))
+EMAIL = os.getenv("EMAIL")
+PASSWORD = os.getenv("PASSWORD")
+PIN = os.getenv("PIN", "")
+LOCATIONS_RAW = os.getenv("LOCATIONS", "")
+DEVICE_NAMES_RAW = os.getenv("KEEP_DEVICE_NAMES", "")
+MODE = os.getenv("MODE", "2")  # 1=Normal, 2=Extreme
+PREFERRED_PROFILE = int(os.getenv("PREFERRED_PROFILE", "0"))
+KEEP_MODE = os.getenv("KEEP_MODE", "OR").upper()  # OR or AND
 
 # Always headless in CI
 HEADLESS = True
@@ -77,12 +78,12 @@ keep_device_names = [name.strip().lower() for name in DEVICE_NAMES_RAW.split(","
 
 # Validate that at least one keep condition is provided
 if not allowed_locations and not keep_device_names:
-    log("❌ At least one of CRUNCHYROLL_LOCATIONS or CRUNCHYROLL_KEEP_DEVICE_NAMES must be set")
+    log("❌ At least one of LOCATIONS or KEEP_DEVICE_NAMES must be set")
     sys.exit(1)
 
 # Validate required vars
 if not EMAIL or not PASSWORD:
-    log("❌ CRUNCHYROLL_EMAIL and CRUNCHYROLL_PASSWORD must be set")
+    log("❌ EMAIL and PASSWORD must be set")
     sys.exit(1)
 
 # ===========================
@@ -484,7 +485,7 @@ def is_logged_out(driver):
 # ===========================
 # NORMAL MODE (CI: no interactive prompts)
 # ===========================
-def run_normal_mode(driver, allowed_locations, keep_device_names, headless=False):
+def run_normal_mode(driver, allowed_locations, keep_device_names, keep_mode, headless=False):
     log("\n--- Normal Mode (CI) – using default delays ---\n")
     delay_no_change = 3
     delay_after_deactivation = 3
@@ -531,17 +532,25 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, headless=False
                 current += 1
                 continue
 
-            keep = False
+            # Determine if device should be kept based on KEEP_MODE
+            location_match = False
+            name_match = False
+
             if allowed_locations:
                 for loc in allowed_locations:
                     if loc.lower() in location.lower():
-                        keep = True
+                        location_match = True
                         break
-            if not keep and keep_device_names:
+            if keep_device_names:
                 for name in keep_device_names:
                     if name.lower() in model.lower() or name.lower() in device_name.lower():
-                        keep = True
+                        name_match = True
                         break
+
+            if keep_mode == "AND":
+                keep = location_match and name_match
+            else:  # OR (default)
+                keep = location_match or name_match
 
             if keep:
                 kept += 1
@@ -572,7 +581,7 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, headless=False
 # ===========================
 # EXTREME MODE (CI)
 # ===========================
-def run_extreme_mode(driver, allowed_locations, keep_device_names, headless=False):
+def run_extreme_mode(driver, allowed_locations, keep_device_names, keep_mode, headless=False):
     log("\n⚡ EXTREME MODE ENABLED – Very fast, may trigger rate limits!")
     log("   Press Ctrl+C to stop.\n")
 
@@ -614,17 +623,24 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, headless=Fals
                 current += 1
                 continue
 
-            keep = False
+            location_match = False
+            name_match = False
+
             if allowed_locations:
                 for loc in allowed_locations:
                     if loc.lower() in location.lower():
-                        keep = True
+                        location_match = True
                         break
-            if not keep and keep_device_names:
+            if keep_device_names:
                 for name in keep_device_names:
                     if name.lower() in model.lower() or name.lower() in device_name.lower():
-                        keep = True
+                        name_match = True
                         break
+
+            if keep_mode == "AND":
+                keep = location_match and name_match
+            else:
+                keep = location_match or name_match
 
             if keep:
                 kept += 1
@@ -679,6 +695,7 @@ if __name__ == "__main__":
     if keep_device_names:
         keep_conditions.append(f"Device Name/Model: {', '.join(keep_device_names)}")
     log(f"   Keeping devices matching: {' OR '.join(keep_conditions)}")
+    log(f"   Keep mode: {KEEP_MODE}")
     log(f"   Mode: {'Extreme' if MODE == '2' else 'Normal'}")
     log(f"   Headless: {HEADLESS}\n")
 
@@ -735,9 +752,9 @@ if __name__ == "__main__":
 
     try:
         if MODE == "2":
-            run_extreme_mode(driver, allowed_locations, keep_device_names, headless=HEADLESS)
+            run_extreme_mode(driver, allowed_locations, keep_device_names, KEEP_MODE, headless=HEADLESS)
         else:
-            run_normal_mode(driver, allowed_locations, keep_device_names, headless=HEADLESS)
+            run_normal_mode(driver, allowed_locations, keep_device_names, KEEP_MODE, headless=HEADLESS)
     except KeyboardInterrupt:
         log("\n🛑 Stopped by user.")
     except Exception as e:
