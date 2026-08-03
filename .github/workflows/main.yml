@@ -28,11 +28,51 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Chrome
+      - name: Install matching Chrome + ChromeDriver (Chrome for Testing)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
-          google-chrome --version
+          set -euo pipefail
+
+          JSON=$(curl -fsSL https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json)
+
+          VERSION=$(echo "$JSON" | jq -r '.channels.Stable.version')
+          CHROME_URL=$(echo "$JSON" | jq -r '.channels.Stable.downloads.chrome[] | select(.platform=="linux64") | .url')
+          DRIVER_URL=$(echo "$JSON" | jq -r '.channels.Stable.downloads.chromedriver[] | select(.platform=="linux64") | .url')
+
+          if [ -z "$CHROME_URL" ] || [ "$CHROME_URL" = "null" ] || [ -z "$DRIVER_URL" ] || [ "$DRIVER_URL" = "null" ]; then
+            echo "Could not resolve download URLs from the Chrome for Testing API" >&2
+            exit 1
+          fi
+
+          echo "Resolved Chrome for Testing version: $VERSION"
+
+          INSTALL_DIR="$HOME/cft"
+          rm -rf "$INSTALL_DIR"
+          mkdir -p "$INSTALL_DIR"
+          cd "$INSTALL_DIR"
+
+          curl -fsSL "$CHROME_URL" -o chrome-linux64.zip
+          curl -fsSL "$DRIVER_URL" -o chromedriver-linux64.zip
+
+          unzip -q chrome-linux64.zip
+          unzip -q chromedriver-linux64.zip
+
+          chmod +x chrome-linux64/chrome
+          chmod +x chromedriver-linux64/chromedriver
+
+          "$INSTALL_DIR/chrome-linux64/chrome" --version
+          "$INSTALL_DIR/chromedriver-linux64/chromedriver" --version
+
+          {
+            echo "CHROME_VERSION=$VERSION"
+            echo "CHROME_BIN=$INSTALL_DIR/chrome-linux64/chrome"
+            echo "CHROMEDRIVER_BIN=$INSTALL_DIR/chromedriver-linux64/chromedriver"
+          } >> "$GITHUB_ENV"
+
+      - name: Clear undetected-chromedriver cache
+        run: |
+          rm -rf "$HOME/.local/share/undetected_chromedriver"
+          rm -rf "$HOME/.cache/undetected_chromedriver"
+          rm -rf /tmp/undetected_chromedriver*
 
       - name: Install dependencies
         run: |
