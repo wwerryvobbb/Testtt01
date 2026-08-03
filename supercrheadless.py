@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""
 SuperCR Device Keeper - CI-Ready (GitHub Actions)
-- Reads all settings from environment variables (renamed for brevity)
+- Reads all settings from environment variables
 - No interactive prompts
 - Auto-re-login if session expires
 - Auto-handle profile overlay if it appears unexpectedly
@@ -10,6 +10,7 @@ SuperCR Device Keeper - CI-Ready (GitHub Actions)
 - Shows model, device name, and location for deactivated devices
 - Summary counts for kept/current/skipped devices
 - All logs with IST timestamps
+- Pin Chrome version for stability
 """
 
 import subprocess
@@ -52,6 +53,21 @@ def timestamp():
 def log(message):
     """Print message with IST timestamp."""
     print(f"[{timestamp()}] {message}")
+
+# ===========================
+# GET CHROME VERSION
+# ===========================
+def get_chrome_version():
+    """Get the installed Chrome version as integer (major version)."""
+    try:
+        result = subprocess.run(["google-chrome", "--version"], capture_output=True, text=True)
+        version = result.stdout.strip()
+        match = re.search(r"(\d+)\.\d+\.\d+\.\d+", version)
+        if match:
+            return int(match.group(1))
+    except:
+        pass
+    return None
 
 # ===========================
 # CONFIGURATION - READ FROM ENV
@@ -488,8 +504,11 @@ def deactivate_device(driver, button, fast=False):
 # CHECK IF LOGGED OUT
 # ===========================
 def is_logged_out(driver):
-    current_url = driver.current_url
-    return current_url.startswith("https://sso.crunchyroll.com/login")
+    try:
+        current_url = driver.current_url
+        return current_url.startswith("https://sso.crunchyroll.com/login")
+    except:
+        return True
 
 # ===========================
 # NORMAL MODE (CI: no interactive prompts)
@@ -717,6 +736,13 @@ if __name__ == "__main__":
         log("🧹 Cleared previous session cache.")
     os.makedirs(PROFILE_BASE_DIR, exist_ok=True)
 
+    # Detect Chrome version
+    chrome_version = get_chrome_version()
+    if chrome_version:
+        log(f"Detected Chrome version: {chrome_version}")
+    else:
+        log("⚠️ Could not detect Chrome version, will use default.")
+
     # Launch browser
     log("🚀 Opening Chrome (headless)...")
     options = uc.ChromeOptions()
@@ -733,11 +759,15 @@ if __name__ == "__main__":
     options.add_argument("--disable-setuid-sandbox")
     options.add_argument("--disable-web-security")
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+    # Update user-agent to match Chrome 126
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
     # Let undetected-chromedriver auto-detect the correct driver version
     try:
-        driver = uc.Chrome(options=options, headless=True)
+        if chrome_version:
+            driver = uc.Chrome(options=options, headless=True, version_main=chrome_version)
+        else:
+            driver = uc.Chrome(options=options, headless=True)
     except Exception as e:
         log(f"⚠️ First driver attempt failed: {e}")
         log("   Retrying with fresh options...")
@@ -756,9 +786,12 @@ if __name__ == "__main__":
         new_options.add_argument("--disable-setuid-sandbox")
         new_options.add_argument("--disable-web-security")
         new_options.add_argument("--disable-features=IsolateOrigins,site-per-process")
-        new_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+        new_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
         try:
-            driver = uc.Chrome(options=new_options, headless=True)
+            if chrome_version:
+                driver = uc.Chrome(options=new_options, headless=True, version_main=chrome_version)
+            else:
+                driver = uc.Chrome(options=new_options, headless=True)
         except Exception as e2:
             log(f"❌ Fallback also failed: {e2}")
             sys.exit(1)
