@@ -10,7 +10,7 @@ SuperCR Device Keeper - CI-Ready (GitHub Actions)
 - Shows model, device name, and location for deactivated devices
 - Summary counts for kept/current/skipped devices
 - All logs with IST timestamps
-- Pin Chrome version for stability
+- Uses Chrome for Testing (matched Chrome + chromedriver)
 """
 
 import subprocess
@@ -55,19 +55,76 @@ def log(message):
     print(f"[{timestamp()}] {message}")
 
 # ===========================
-# GET CHROME VERSION
+# ROBUST DRIVER CREATION (from Claude fix)
 # ===========================
-def get_chrome_version():
-    """Get the installed Chrome version as integer (major version)."""
-    try:
-        result = subprocess.run(["google-chrome", "--version"], capture_output=True, text=True)
-        version = result.stdout.strip()
-        match = re.search(r"(\d+)\.\d+\.\d+\.\d+", version)
-        if match:
-            return int(match.group(1))
-    except:
-        pass
-    return None
+def _clear_uc_cache():
+    for path in (
+        os.path.expanduser("~/.local/share/undetected_chromedriver"),
+        os.path.expanduser("~/.cache/undetected_chromedriver"),
+    ):
+        shutil.rmtree(path, ignore_errors=True)
+
+def create_driver(max_attempts: int = 3):
+    chrome_bin = os.environ.get("CHROME_BIN")
+    driver_bin = os.environ.get("CHROMEDRIVER_BIN")
+    chrome_version = os.environ.get("CHROME_VERSION")
+
+    if not chrome_bin or not driver_bin:
+        raise RuntimeError(
+            "CHROME_BIN / CHROMEDRIVER_BIN not set — did the "
+            "'Install matching Chrome + ChromeDriver' step run?"
+        )
+
+    version_main = int(chrome_version.split(".")[0]) if chrome_version else None
+
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        _clear_uc_cache()
+
+        options = uc.ChromeOptions()
+        options.binary_location = chrome_bin
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-notifications")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+
+        try:
+            driver = uc.Chrome(
+                options=options,
+                browser_executable_path=chrome_bin,
+                driver_executable_path=driver_bin,
+                version_main=version_main,
+                headless=True,
+                use_subprocess=True,
+            )
+
+            actual = driver.capabilities.get("browserVersion", "")
+            if version_main and not actual.startswith(str(version_main)):
+                driver.quit()
+                raise RuntimeError(
+                    f"Chrome/driver mismatch: expected major version "
+                    f"{version_main}, browser reports {actual}"
+                )
+
+            log(f"✅ Chrome started successfully (version: {actual})")
+            return driver
+
+        except Exception as exc:
+            last_error = exc
+            log(f"⚠️ create_driver attempt {attempt}/{max_attempts} failed: {exc}")
+            time.sleep(3)
+
+    raise RuntimeError(f"Could not start Chrome after {max_attempts} attempts") from last_error
 
 # ===========================
 # CONFIGURATION - READ FROM ENV
@@ -736,65 +793,12 @@ if __name__ == "__main__":
         log("🧹 Cleared previous session cache.")
     os.makedirs(PROFILE_BASE_DIR, exist_ok=True)
 
-    # Detect Chrome version
-    chrome_version = get_chrome_version()
-    if chrome_version:
-        log(f"Detected Chrome version: {chrome_version}")
-    else:
-        log("⚠️ Could not detect Chrome version, will use default.")
-
-    # Launch browser
-    log("🚀 Opening Chrome (headless)...")
-    options = uc.ChromeOptions()
-    options.add_argument(f"--user-data-dir={PROFILE_BASE_DIR}")
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--disable-infobars")
-    options.add_argument("--disable-popup-blocking")
-    options.add_argument("--disable-notifications")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-setuid-sandbox")
-    options.add_argument("--disable-web-security")
-    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
-    # Update user-agent to match Chrome 126
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-
-    # Let undetected-chromedriver auto-detect the correct driver version
+    # Launch browser using the robust driver creator
     try:
-        if chrome_version:
-            driver = uc.Chrome(options=options, headless=True, version_main=chrome_version)
-        else:
-            driver = uc.Chrome(options=options, headless=True)
+        driver = create_driver()
     except Exception as e:
-        log(f"⚠️ First driver attempt failed: {e}")
-        log("   Retrying with fresh options...")
-        # Create fresh options for fallback
-        new_options = uc.ChromeOptions()
-        new_options.add_argument(f"--user-data-dir={PROFILE_BASE_DIR}")
-        new_options.add_argument("--headless=new")
-        new_options.add_argument("--no-sandbox")
-        new_options.add_argument("--disable-dev-shm-usage")
-        new_options.add_argument("--window-size=1920,1080")
-        new_options.add_argument("--disable-blink-features=AutomationControlled")
-        new_options.add_argument("--disable-infobars")
-        new_options.add_argument("--disable-popup-blocking")
-        new_options.add_argument("--disable-notifications")
-        new_options.add_argument("--disable-extensions")
-        new_options.add_argument("--disable-setuid-sandbox")
-        new_options.add_argument("--disable-web-security")
-        new_options.add_argument("--disable-features=IsolateOrigins,site-per-process")
-        new_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-        try:
-            if chrome_version:
-                driver = uc.Chrome(options=new_options, headless=True, version_main=chrome_version)
-            else:
-                driver = uc.Chrome(options=new_options, headless=True)
-        except Exception as e2:
-            log(f"❌ Fallback also failed: {e2}")
-            sys.exit(1)
+        log(f"❌ Failed to create Chrome driver: {e}")
+        sys.exit(1)
 
     # Login
     login_success = login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE)
