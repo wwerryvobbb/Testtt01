@@ -5,6 +5,7 @@ SuperCR Device Keeper - CI-Ready (GitHub Actions)
 - No interactive prompts
 - Auto-re-login if session expires
 - Auto-handle profile overlay if it appears unexpectedly
+- Detects modal overlays and re-logins to clear them
 - Keeps devices by location OR device name/model (both optional, but at least one required)
 - Supports OR/AND keep mode via KEEP_MODE (default: OR)
 - Shows model, device name, and location for deactivated devices
@@ -55,7 +56,7 @@ def log(message):
     print(f"[{timestamp()}] {message}")
 
 # ===========================
-# ROBUST DRIVER CREATION (from Claude fix)
+# ROBUST DRIVER CREATION
 # ===========================
 def _clear_uc_cache():
     for path in (
@@ -189,6 +190,28 @@ def is_profile_overlay_present(driver):
     """Return True if the profile selection overlay is visible."""
     overlay, _ = get_profile_overlay_and_cards(driver)
     return overlay is not None
+
+# ===========================
+# MODAL / OVERLAY DETECTION (for blocking deactivate)
+# ===========================
+def is_modal_blocking(driver):
+    """Return True if a modal overlay is blocking the page."""
+    try:
+        # Look for iframe with common modal classes/titles
+        iframes = driver.find_elements(By.XPATH, "//iframe[contains(@class, 'modal') or contains(@class, 'ab-in-app-message') or contains(@title, 'Modal')]")
+        if iframes:
+            return True
+        # Look for overlay divs
+        overlays = driver.find_elements(By.XPATH, "//div[contains(@class, 'modal') or contains(@class, 'overlay') or contains(@class, 'ab-in-app-message')]")
+        if overlays:
+            return True
+        # Also check for specific text that often appears in overlays
+        overlay_texts = driver.find_elements(By.XPATH, "//*[contains(text(), 'Modal Message') or contains(text(), 'Ad')]")
+        if overlay_texts:
+            return True
+    except:
+        pass
+    return False
 
 # ===========================
 # LOGIN + PROFILE SELECTION (WITH CYCLING & WORKING PIN)
@@ -656,6 +679,17 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, keep_mode, hea
             log(f"   📍 Location: {location}")
             log("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=False)
+
+            # If deactivation failed due to modal, re-login
+            if not success and is_modal_blocking(driver):
+                log("⚠️ Modal overlay detected – re-logging to clear it...")
+                if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
+                    log("❌ Re-login failed. Exiting.")
+                    break
+                driver.get(DEVICE_URL)
+                time.sleep(load_wait)
+                break  # restart the cycle
+
             if success:
                 log("   ✅ Deactivation completed.")
                 deactivated_any = True
@@ -663,6 +697,9 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, keep_mode, hea
             else:
                 log("   ❌ Deactivation failed – moving to next device.")
                 skipped += 1
+
+        if once:
+            break
 
         if not deactivated_any:
             log(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
@@ -755,6 +792,17 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, keep_mode, he
             log(f"   📍 Location: {location}")
             log("   ❌ Deactivating...")
             success = deactivate_device(driver, btn, fast=True)
+
+            # If deactivation failed due to modal, re-login
+            if not success and is_modal_blocking(driver):
+                log("⚠️ Modal overlay detected – re-logging to clear it...")
+                if not login_and_select_profile(driver, EMAIL, PASSWORD, PIN, PREFERRED_PROFILE):
+                    log("❌ Re-login failed. Exiting.")
+                    break
+                driver.get(DEVICE_URL)
+                time.sleep(load_wait)
+                break  # restart the cycle
+
             if success:
                 log("   ✅ Deactivation completed.")
                 deactivated_any = True
@@ -762,6 +810,9 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, keep_mode, he
             else:
                 log("   ❌ Deactivation failed – moving to next device.")
                 skipped += 1
+
+        if once:
+            break
 
         if not deactivated_any:
             log(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
