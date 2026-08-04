@@ -698,8 +698,7 @@ def run_normal_mode(driver, allowed_locations, keep_device_names, keep_mode, hea
                 log("   ❌ Deactivation failed – moving to next device.")
                 skipped += 1
 
-        if once:
-            break
+        # Removed erroneous 'if once: break' line
 
         if not deactivated_any:
             log(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
@@ -811,8 +810,7 @@ def run_extreme_mode(driver, allowed_locations, keep_device_names, keep_mode, he
                 log("   ❌ Deactivation failed – moving to next device.")
                 skipped += 1
 
-        if once:
-            break
+        # Removed erroneous 'if once: break' line
 
         if not deactivated_any:
             log(f"📊 Summary: {total} device(s) found. Current: {current}, Kept: {kept}, Skipped: {skipped}.")
